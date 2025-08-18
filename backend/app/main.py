@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .db import init_db  
+from .routers import groups
 
 app = FastAPI(title="Expense Splitter API", version="0.1.0")
 
@@ -20,3 +21,6 @@ def on_startup():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+app.include_router(groups.router)
