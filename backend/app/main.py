@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware 
+from fastapi.middleware.cors import CORSMiddleware
+from .db import init_db  
 
 app = FastAPI(title="Expense Splitter API", version="0.1.0")
 
@@ -11,6 +12,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def on_startup():
+    init_db() #creates tables on app boot
 
 @app.get("/health")
 def health():
