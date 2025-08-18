@@ -8,3 +8,15 @@ class GroupRead(SQLModel):
     id: int
     name: str
     created_at: datetime
+
+class MemberCreate(SQLModel):
+    name: str
+    email: str | None = None
+
+
+class MemberRead(SQLModel):
+    id: int
+    group_id: int
+    name: str
+    email: str | None
+    created_at: datetime
