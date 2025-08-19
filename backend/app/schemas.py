@@ -43,3 +43,8 @@ class ExpenseRead(SQLModel):
     created_at: datetime
     shares: List[ExpenseShareRead]
 
+class BalanceRead(SQLModel):
+    member_id: int
+    name: str
+    net: float
+
