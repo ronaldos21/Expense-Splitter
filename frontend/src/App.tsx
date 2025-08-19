@@ -15,26 +15,33 @@ export default function App() {
     setError(null);
     try {
       const res = await api.get<Group[]>("/groups");
-      setGroups(res.data);
+      // newest first (optional)
+      const sorted = [...res.data].sort(
+        (a, b) => +new Date(b.created_at) - +new Date(a.created_at)
+      );
+      setGroups(sorted);
     } catch (e: unknown) {
-      console.error("Failed to load groups", e); // Log the error for debugging
+      console.error("Failed to load groups", e);
       setError("Failed to load groups");
     } finally {
       setLoading(false);
     }
   };
 
-  const createGroup = async () => {
+  const createGroup = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     const name = newName.trim();
     if (!name) return;
     setCreating(true);
     setError(null);
     try {
       const res = await api.post<Group>("/groups", { name });
+      // optimistic prepend (keeps sort; or call loadGroups() if you prefer)
       setGroups((g) => [res.data, ...g]);
       setNewName("");
-    } catch {
-      setError("Failed to create group");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(`Failed to create group${msg ? `: ${msg}` : ""}`);
     } finally {
       setCreating(false);
     }
@@ -43,6 +50,8 @@ export default function App() {
   useEffect(() => {
     loadGroups();
   }, []);
+
+  const isCreateDisabled = creating || newName.trim().length === 0;
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -55,29 +64,37 @@ export default function App() {
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         <section className="rounded-2xl border bg-white p-4 shadow-sm">
           <h2 className="font-semibold mb-3">Create Group</h2>
-          <div className="flex gap-2">
+
+          <form onSubmit={createGroup} className="flex gap-2">
             <input
               className="flex-1 rounded-xl border px-3 py-2"
               placeholder="Group name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
+              disabled={creating}
+              aria-label="Group name"
             />
             <button
-              onClick={createGroup}
-              disabled={creating}
+              type="submit"
+              disabled={isCreateDisabled}
               className="rounded-xl bg-black text-white px-4 py-2 disabled:opacity-50"
             >
               {creating ? "Creating…" : "Create"}
             </button>
-          </div>
+          </form>
+
           {error && <p className="text-sm text-rose-600 mt-2">{error}</p>}
         </section>
 
         <section className="rounded-2xl border bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Groups</h2>
-            <button onClick={loadGroups} className="text-sm underline">
-              Refresh
+            <button
+              onClick={loadGroups}
+              className="text-sm underline disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? "Loading…" : "Refresh"}
             </button>
           </div>
 
@@ -93,7 +110,9 @@ export default function App() {
                   className="py-2 flex items-center justify-between"
                 >
                   <span className="font-medium">{g.name}</span>
-                  <span className="text-xs text-neutral-500">#{g.id}</span>
+                  <span className="text-xs text-neutral-500">
+                    {new Date(g.created_at).toLocaleString()} · #{g.id}
+                  </span>
                 </li>
               ))}
             </ul>
