@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .db import init_db  
-from .routers import groups, members, expenses
+from .routers import groups, members, expenses, balances
 
 app = FastAPI(title="Expense Splitter API", version="0.1.0")
 
@@ -26,3 +26,4 @@ def health():
 app.include_router(groups.router)
 app.include_router(members.router)
 app.include_router(expenses.router)
+app.include_router(balances.router)
