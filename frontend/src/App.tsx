@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import api from "./lib/api";
+import { useMemo } from "react";
+
+import { getExpenses, getBalances, createExpense } from "./lib/api";
 
 type Group = { id: number; name: string; created_at: string };
 type Member = {
@@ -9,6 +12,19 @@ type Member = {
   email: string;
   created_at: string;
 };
+
+type ExpenseShare = { member_id: number; share: number };
+type Expense = {
+  id: number;
+  group_id: number;
+  payer_id: number;
+  amount: number;
+  description: string;
+  created_at: string;
+  shares: ExpenseShare[];
+};
+
+type Balance = { member_id: number; name: string; net: number };
 
 export default function App() {
   // --- groups ---
@@ -28,6 +44,20 @@ export default function App() {
   const [mName, setMName] = useState("");
   const [mEmail, setMEmail] = useState("");
   const [mError, setMError] = useState<string | null>(null);
+
+  //expenses
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [eDesc, setEDesc] = useState("");
+  const [eAmount, setEAmount] = useState<string>("");
+  const [ePayerId, setEPayerId] = useState<number | null>(null);
+  const [eLoading, setELoading] = useState(false);
+  const [eCreating, setECreating] = useState(false);
+  const [eError, setEError] = useState<string | null>(null);
+
+  // balances
+  const [balances, setBalances] = useState<Balance[]>([]);
+  const [bLoading, setBLoading] = useState(false);
+  const [bError, setBError] = useState<string | null>(null);
 
   // -------- Groups --------
   const loadGroups = async () => {
@@ -96,13 +126,83 @@ export default function App() {
       setMembers((m) => [res.data, ...m]);
       setMName("");
       setMEmail("");
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Failed to create member", e);
       setMError("Failed to create member");
     } finally {
       setMCreating(false);
     }
   };
+
+  async function loadExpenses(gid: number) {
+    setELoading(true);
+    setEError(null);
+    try {
+      const res = await getExpenses(gid);
+      setExpenses(res.data);
+    } catch (err: unknown) {
+      console.error("Failed to load expenses", err);
+      setEError("Failed to load expenses");
+    } finally {
+      setELoading(false);
+    }
+  }
+
+  async function loadBalances(gid: number) {
+    setBLoading(true);
+    setBError(null);
+    try {
+      const res = await getBalances(gid);
+      setBalances(res.data);
+    } catch (err: unknown) {
+      console.error("Failed to load balances", err);
+      setBError("Failed to load balances");
+    } finally {
+      setBLoading(false);
+    }
+  }
+
+  async function onCreateExpense() {
+    if (!activeGroup) return;
+    const amount = parseFloat(eAmount);
+    const desc = eDesc.trim();
+    if (!desc || !amount || !isFinite(amount) || amount <= 0) return;
+    if (!ePayerId || members.length === 0) {
+      setEError("Need a payer and at least one member");
+      return;
+    }
+
+    // Equal split with rounding fix
+    const each = Math.round((amount / members.length) * 100) / 100;
+    const remainder =
+      Math.round(amount * 100) - Math.round(each * 100) * members.length;
+    const shares: ExpenseShare[] = members.map((m, idx) => {
+      let cents = Math.round(each * 100);
+      if (remainder !== 0 && idx < Math.abs(remainder))
+        cents += remainder > 0 ? 1 : -1;
+      return { member_id: m.id, share: cents / 100 };
+    });
+
+    setECreating(true);
+    setEError(null);
+    try {
+      const res = await createExpense(activeGroup.id, {
+        description: desc,
+        amount,
+        payer_id: ePayerId,
+        shares,
+      });
+      setExpenses((xs) => [res.data, ...xs]);
+      setEDesc("");
+      setEAmount("");
+      loadBalances(activeGroup.id);
+    } catch (e: unknown) {
+      console.error("Failed to create expense", e);
+      setEError("Failed to create expense");
+    } finally {
+      setECreating(false);
+    }
+  }
 
   // initial load
   useEffect(() => {
@@ -112,9 +212,29 @@ export default function App() {
 
   // when active group changes, load its members
   useEffect(() => {
-    if (activeGroup) loadMembers(activeGroup.id);
+    if (!activeGroup) return;
+    loadMembers(activeGroup.id);
+    loadExpenses(activeGroup.id);
+    loadBalances(activeGroup.id);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroup?.id]);
+
+  //track memebers ids in a stable way for deps array
+  const memberIds = useMemo(
+    () => members.map((m) => m.id).join(","),
+    [members]
+  );
+
+  useEffect(() => {
+    if (!members.length) return;
+
+    // only set if ePayerId is null or no longer in the list
+    const payerStillExists = members.some((m) => m.id === ePayerId);
+    if (ePayerId == null || !payerStillExists) {
+      setEPayerId(members[0].id);
+    }
+  }, [memberIds, ePayerId, members]);
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -246,11 +366,108 @@ export default function App() {
                 ))}
               </ul>
             )}
+
+            {/* Create + List expenses*/}
+            {activeGroup && (
+              <section>
+                <div className="flex items-center justify-between">
+                  <h2>Expenses · {activeGroup.name}</h2>
+                  <button onClick={() => loadExpenses(activeGroup.id)}>
+                    Refresh
+                  </button>
+                </div>
+
+                <div
+                  className="grid gap-2"
+                  style={{ gridTemplateColumns: "1fr 150px 180px 140px" }}
+                >
+                  <input
+                    placeholder="Description"
+                    value={eDesc}
+                    onChange={(e) => setEDesc(e.target.value)}
+                  />
+                  <input
+                    placeholder="Amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={eAmount}
+                    onChange={(e) => setEAmount(e.target.value)}
+                  />
+                  <select
+                    value={ePayerId ?? ""}
+                    onChange={(e) => setEPayerId(Number(e.target.value))}
+                  >
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button disabled={eCreating} onClick={onCreateExpense}>
+                    {eCreating ? "Adding…" : "Add Expense"}
+                  </button>
+                </div>
+                {eError && <p style={{ color: "crimson" }}>{eError}</p>}
+
+                {eLoading ? (
+                  <p>Loading…</p>
+                ) : expenses.length === 0 ? (
+                  <p>No expenses yet.</p>
+                ) : (
+                  <ul>
+                    {expenses.map((x) => (
+                      <li key={x.id}>
+                        <strong>
+                          {members.find((m) => m.id === x.payer_id)?.name ||
+                            `#${x.payer_id}`}
+                        </strong>
+                        {" paid $"}
+                        {x.amount.toFixed(2)}
+                        {" — "}
+                        {x.description}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* Balances */}
+                {activeGroup && (
+                  <section>
+                    <div className="flex items-center justify-between">
+                      <h2>Balances · {activeGroup.name}</h2>
+                      <button onClick={() => loadBalances(activeGroup.id)}>
+                        Refresh
+                      </button>
+                    </div>
+
+                    {bError && <p style={{ color: "crimson" }}>{bError}</p>}
+                    {bLoading ? (
+                      <p>Loading…</p>
+                    ) : balances.length === 0 ? (
+                      <p>No balances yet.</p>
+                    ) : (
+                      <ul>
+                        {balances.map((b) => (
+                          <li key={b.member_id}>
+                            {b.name}{" "}
+                            {b.net > 0
+                              ? "is owed"
+                              : b.net < 0
+                              ? "owes"
+                              : "is settled"}{" "}
+                            ${Math.abs(b.net).toFixed(2)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                )}
+              </section>
+            )}
           </section>
         )}
       </main>
     </div>
   );
 }
-
-//to be completed step 4 commit and pr
