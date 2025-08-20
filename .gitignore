@@ -12,3 +12,24 @@ frontend/.env
 
 # os
 .DS_Store
+
+# editor
+.vscode/*
+!.vscode/settings.json
+
+# --- frontend env files ---
+frontend/.env.local
+frontend/.env.*.local
+
+# (if ever put envs elsewhere)
+**/.env.local
+**/.env.*.local
+
+# --- sqlite / local DBs ---
+*.db
+*.sqlite
+*.sqlite3
+.local.db
+
+# --- vite cache (optional) ---
+frontend/.vite/
