@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+from fastapi import APIRouter, Depends, HTTPException, Response
+from typing import List, Optional
 from sqlmodel import select
 from ..db import get_session
 from ..models import Group, Member, Expense, ExpenseShare
-from ..schemas import ExpenseCreate, ExpenseRead, ExpenseShareRead
+from ..schemas import ExpenseCreate, ExpenseRead, ExpenseShareRead, ExpenseUpdate
 
+# Router for expenses
 router = APIRouter(prefix="/groups/{gid}/expenses", tags=["expenses"])
 
+# Create a new expense
 @router.post("", response_model=ExpenseRead)
 def create_expense(gid: int, payload: ExpenseCreate, session=Depends(get_session)):
     group = session.get(Group, gid)
@@ -40,6 +42,7 @@ def create_expense(gid: int, payload: ExpenseCreate, session=Depends(get_session
         shares=shares
     )
 
+# List all expenses for a group
 @router.get("", response_model=List[ExpenseRead])
 def list_expenses(gid: int, session=Depends(get_session)):
     if not session.get(Group, gid):
@@ -56,3 +59,72 @@ def list_expenses(gid: int, session=Depends(get_session)):
             shares=shares
         ))
     return out
+
+# Delete an expense
+@router.delete("/{eid}", status_code=204)
+def delete_expense(gid: int, eid: int, session=Depends(get_session)):
+    # find expense
+    exp = session.get(Expense, eid)
+    if not exp or exp.group_id != gid:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    # delete shares first (if no ON DELETE CASCADE in your schema)
+    shares = session.exec(
+        select(ExpenseShare).where(ExpenseShare.expense_id == eid)
+    ).all()
+    for s in shares:
+        session.delete(s)
+
+    # delete expense
+    session.delete(exp)
+    session.commit()
+    # 204 No Content
+    return Response(status_code=204)
+
+# Update an existing expense
+@router.patch("/{eid}", response_model=ExpenseRead)
+def update_expense(
+    gid: int,
+    eid: int,
+    payload: ExpenseUpdate,  
+    session=Depends(get_session),
+):
+    exp = session.get(Expense, eid)
+    if not exp or exp.group_id != gid:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    # Optional fields: description, amount, payer_id
+    desc: Optional[str] = payload.get("description")
+    amount: Optional[float] = payload.get("amount")
+    payer_id: Optional[int] = payload.get("payer_id")
+
+    if desc is not None:
+        exp.description = desc
+    if amount is not None:
+        exp.amount = amount
+    if payer_id is not None:
+        payer = session.get(Member, payer_id)
+        if not payer or payer.group_id != gid:
+            raise HTTPException(status_code=400, detail="Invalid payer_id")
+        exp.payer_id = payer_id
+
+    session.add(exp)
+    session.commit()
+    session.refresh(exp)
+
+    # read shares to build response
+    es = session.exec(
+        select(ExpenseShare).where(ExpenseShare.expense_id == exp.id)
+    ).all()
+    shares = [ExpenseShareRead(member_id=s.member_id, share=s.share) for s in es]
+
+    return ExpenseRead(
+        id=exp.id,
+        group_id=exp.group_id,
+        payer_id=exp.payer_id,
+        amount=exp.amount,
+        description=exp.description,
+        created_at=exp.created_at,
+        shares=shares,
+    )
+
