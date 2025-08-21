@@ -8,7 +8,7 @@ app = FastAPI(title="Expense Splitter API", version="0.1.0")
 # wide-open CORS in dev; we’ll tighten later
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],   # later: set to your Vercel URL / localhost:5173
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # frontend dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,3 +27,10 @@ app.include_router(groups.router)
 app.include_router(members.router)
 app.include_router(expenses.router)
 app.include_router(balances.router)
+
+'''
+app.include_router(groups.router,   prefix="/api")
+app.include_router(members.router,  prefix="/api")
+app.include_router(expenses.router, prefix="/api")
+app.include_router(balances.router, prefix="/api")
+'''

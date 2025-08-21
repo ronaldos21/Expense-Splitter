@@ -1,28 +1,58 @@
 import { useState } from "react";
 import api from "../lib/api";
 
-type Props = { onCreated?: () => void };
+type Group = { id: number; name: string; created_at?: string };
 
-export default function GroupForm({ onCreated }: Props) {
+type Props = {
+  // Optimistic hooks provided by parent (GroupList/App)
+  onOptimisticAdd: (temp: Group) => void;
+  onCommit: (tempId: number, real: Group) => void;
+  onError?: (tempId: number, err: unknown) => void;
+
+  // Optional: keep your previous “refresh” if you still want it
+  onCreated?: () => void;
+};
+
+export default function GroupForm({
+  onOptimisticAdd,
+  onCommit,
+  onError,
+  onCreated,
+}: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const submit = async (e: React.FormEvent) => {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!name.trim()) return;
+
     setBusy(true);
     setError(null);
+
+    // 1) Add a TEMP group instantly
+    const tempId = -Date.now();
+    const tempGroup: Group = { id: tempId, name: name.trim() };
+    onOptimisticAdd(tempGroup);
+
     try {
-      await api.post("/groups", { name });
+      // 2) Call the server
+      const res = await api.post<Group>("/groups", { name: name.trim() });
+      const real = res.data;
+
+      // 3) Replace the TEMP group with the real one
+      onCommit(tempId, real);
+
       setName("");
-      onCreated?.();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(`Failed to create group: ${msg}`);
+      onCreated?.(); // optional refresh you already had
+    } catch (err) {
+      // 4) Rollback if it failed
+      setError("Failed to create group.");
+      onError?.(tempId, err);
     } finally {
       setBusy(false);
     }
-  };
+  }
 
   return (
     <form onSubmit={submit} className="flex items-center gap-2">
