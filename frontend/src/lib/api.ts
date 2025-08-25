@@ -1,4 +1,3 @@
-// api.ts (typed version)
 import axios from "axios";
 
 export type Group = { id: number; name: string; created_at: string };
@@ -34,8 +33,9 @@ export type UpdateExpenseDto = {
 };
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000",
-  // withCredentials: true, // uncomment if your backend uses cookie auth
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
+  withCredentials: false,
+  timeout: 15000,
 });
 
 // Groups
