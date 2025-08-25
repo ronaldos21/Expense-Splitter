@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
-import ModernDashboard, {
-  type Group,
-  type Member,
-  type Expense,
-  type Balance,
-} from "./components/ModernDashboard";
+import ModernDashboard from "./components/ModernDashboard";
+import type { Group, Member, Expense, Balance } from "./lib/api";
 
 import {
   getGroups,
@@ -133,7 +129,12 @@ export default function App() {
     }
   }
 
-  const onSelectGroup = (id: number) => {
+  // NOTE: accept number | null (matches ModernDashboard prop)
+  const onSelectGroup = (id: number | null) => {
+    if (id == null) {
+      setActiveGroup(null);
+      return;
+    }
     const g = groups.find((x) => x.id === id) || null;
     setActiveGroup(g);
   };
